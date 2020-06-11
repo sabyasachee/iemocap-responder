@@ -1,3 +1,5 @@
+# author = Sabyasachee Baruah
+
 import re
 import csv
 import sys
@@ -12,7 +14,32 @@ from send_email import send_emails
 from parse_request import parse_body
 
 def respond_requests(iemocap_password):
-    with open("account.txt") as fr:
+    '''
+    respond_requests searches for new IEMOCAP requests and responds to them.
+
+    Input
+    ====
+
+    iemocap_password - The active password to iemocap dataset.
+
+    Working
+    ====
+
+        1. Login to account using file/account.txt credentials.
+        2. Search INBOX for emails with SUBJECT = 'IEMOCAP Release Form' since 02-Apr-2020.
+        3. Filter out emails that you have already responded.
+        4. For each new email -
+            i.   Parse the email body.
+            ii.  Choose a response amongst - Approve, Reject, Industry.
+            iii. If you choose Reject, enter the reason for rejection.
+        5. Approved requests are sent IEMOCAP password. 
+            Rejected requests are sent rejection reason and asked to resubmit request.
+            Industrial requests are ignored.
+        6. Approved and Industrial requests are saved to files/.
+            Message IDs of rejected requests are saved to files/error_message_ids.txt
+    '''
+
+    with open("files/account.txt") as fr:
         lines = fr.read().strip().split("\n")
         account = lines[0].split("=")[1].strip()
         app_passwd = lines[2].split("=")[1].strip()
@@ -26,16 +53,22 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
     M = imaplib.IMAP4_SSL("imap.gmail.com")
     print("logging in...")
     M.login(account, app_passwd)
+    
     M.select("INBOX")
-    print("searching iemocap emails...")
+    print("searching iemocap emails in INBOX...")
     _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Apr-2020')
     msg_ids = data[0].split()
+    
+    M.select("[Gmail]/Spam")
+    print("searching iemocap emails in SPAM...")
+    _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Apr-2020')
+    msg_ids += data[0].split()
 
-    iemocap_df = pd.read_csv("iemocap_2020.csv", index_col=None)
-    industry_df = pd.read_csv("iemocap_industry_2020.csv", index_col=None)
+    iemocap_df = pd.read_csv("files/iemocap_2020.csv", index_col=None)
+    industry_df = pd.read_csv("files/iemocap_industry_2020.csv", index_col=None)
     prev_msg_ids = list(iemocap_df["msg_id"].apply(lambda x: x[2:-1].encode()).values)
     prev_msg_ids += list(industry_df["msg_id"].apply(lambda x: x[2:-1].encode()).values)
-    with open("error_message_ids.txt") as fr:
+    with open("files/error_message_ids.txt") as fr:
         lines = fr.read().strip().split("\n")
         for line in lines:
             prev_msg_ids.append(line.encode())
@@ -49,6 +82,7 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
     industry_records = []
     error_msg_ids = []
     responses = []
+
     for i, msg_id in enumerate(new_msg_ids):
         _, data = M.fetch(msg_id, "(RFC822)")
         message = email.message_from_bytes(data[0][1])
@@ -68,13 +102,15 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
                 for key, value in parsed_output.items():
                     print(f"{key:15s} = {value}")
                 print()
+                
                 print("1. Approve")
-                print("2. Reject")
+                print("2. Correct")
                 print("3. Industry")
-                print("4. Quit")
-                print()
-
+                print("4. Stash")
+                print("5. Next")
+                print("6. Quit\n")
                 action = input("Enter action number?\t")
+                
                 response = email.message.Message()
                 response["Message-ID"] = email.utils.make_msgid()
                 response["In-Reply-To"] = message["Message-ID"]
@@ -94,6 +130,8 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
                 elif action == "3":
                     industry_records.append(parsed_output)
                 elif action == "4":
+                    error_msg_ids.append(msg_id)
+                elif action == "6":
                     return
 
             except Exception as e:
@@ -101,7 +139,15 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
                 error_msg_ids.append(msg_id)
         else:
             print(f"{i + 1}/{len(new_msg_ids)}. MESSAGE ID = {msg_id}, multipart message ignored")
+            error_msg_ids.append(msg_id)
         print("================================================================================================\n")
+
+    if len(responses) > 0:
+        action = input("Do you want to send emails? (y/n)\t")
+        if action == "n":
+            return
+    else:
+        return
 
     if len(responses) > 0:
         print("sending emails...")
@@ -110,9 +156,9 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
 
     approved_df = pd.DataFrame.from_dict(approved_records)
     new_industry_df = pd.DataFrame.from_dict(industry_records)
-    with open("error_message_ids.txt", "wb") as fw:
+    with open("files/error_message_ids.txt", "ab") as fw:
         for msg_id in error_msg_ids:
-            fw.write(b"\n" + msg_id)
+            fw.write(msg_id + b"\n")
 
     if approved_df.shape[0]:
         print("Approved Records =>")
@@ -124,8 +170,8 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
 
     iemocap_df = pd.concat([iemocap_df, approved_df])
     industry_df = pd.concat([industry_df, new_industry_df])
-    iemocap_df.to_csv("iemocap_2020.csv", index=False, quoting=csv.QUOTE_ALL)
-    industry_df.to_csv("iemocap_industry_2020.csv", index=False, quoting=csv.QUOTE_ALL)
+    iemocap_df.to_csv("files/iemocap_2020.csv", index=False, quoting=csv.QUOTE_ALL)
+    industry_df.to_csv("files/iemocap_industry_2020.csv", index=False, quoting=csv.QUOTE_ALL)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

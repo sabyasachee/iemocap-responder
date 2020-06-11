@@ -1,6 +1,30 @@
+# author - Sabyasachee Baruah
 import re
 
 def parse_body(text):
+    '''
+    parse_body parses the IEMOCAP request email body.
+
+    Input
+    =====
+
+    text - Email body text
+
+    Output
+    ====
+
+    A dictionary is returned. Its keys are -
+
+        1. name
+        2. affiliation
+        3. email
+        4. department
+        5. title
+        6. address
+
+    All keys have string values
+    '''
+
     lines = re.split(r"[\r\n]+", text)
     first_name = lines[2][11:].strip()
     last_name = lines[3][10:].strip()

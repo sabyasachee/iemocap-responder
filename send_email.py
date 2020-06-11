@@ -1,8 +1,10 @@
+# author - Sabyasachee
+
 import ssl
 import smtplib
 
 def send_emails(responses):
-    with open("account.txt") as fr:
+    with open("files/account.txt") as fr:
         lines = fr.read().strip().split("\n")
         account = lines[0].split("=")[1].strip()
         app_passwd = lines[2].split("=")[1].strip()
