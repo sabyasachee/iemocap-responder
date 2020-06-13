@@ -61,7 +61,7 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
     
     M.select("[Gmail]/Spam")
     print("searching iemocap emails in SPAM...")
-    _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Apr-2020')
+    _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Jun-2020')
     msg_ids += data[0].split()
 
     iemocap_df = pd.read_csv("files/iemocap_2020.csv", index_col=None)
@@ -85,6 +85,12 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
 
     for i, msg_id in enumerate(new_msg_ids):
         _, data = M.fetch(msg_id, "(RFC822)")
+        
+        if data[0] is None:
+            print(f"{i + 1}/{len(new_msg_ids)}. null data")
+            error_msg_ids.append(msg_id)
+            continue
+
         message = email.message_from_bytes(data[0][1])
         
         if not message.is_multipart():
