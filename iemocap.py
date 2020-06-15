@@ -57,12 +57,12 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
     M.select("INBOX")
     print("searching iemocap emails in INBOX...")
     _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Apr-2020')
-    msg_ids = data[0].split()
+    inbox_msg_ids = data[0].split()
     
     M.select("[Gmail]/Spam")
     print("searching iemocap emails in SPAM...")
     _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Jun-2020')
-    msg_ids += data[0].split()
+    spam_msg_ids = data[0].split()
 
     iemocap_df = pd.read_csv("files/iemocap_2020.csv", index_col=None)
     industry_df = pd.read_csv("files/iemocap_industry_2020.csv", index_col=None)
@@ -72,7 +72,11 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
         lines = fr.read().strip().split("\n")
         for line in lines:
             prev_msg_ids.append(line.encode())
-    new_msg_ids = [x for x in msg_ids if x not in prev_msg_ids]
+    
+    new_inbox_msg_ids = [x for x in inbox_msg_ids if x not in prev_msg_ids]
+    new_spam_msg_ids = [x for x in spam_msg_ids if x not in prev_msg_ids]
+    new_msg_ids = [("INBOX", x) for x in new_inbox_msg_ids] + [("[Gmail]/Spam", x) for x in new_spam_msg_ids]
+
     if len(new_msg_ids) == 0:
         print("No new requests...")
         return
@@ -83,7 +87,12 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
     error_msg_ids = []
     responses = []
 
-    for i, msg_id in enumerate(new_msg_ids):
+    selected_msg_box = None
+
+    for i, (msg_box, msg_id) in enumerate(new_msg_ids):
+        if not selected_msg_box or selected_msg_box != msg_box:
+            M.select(msg_box)
+            selected_msg_box = msg_box
         _, data = M.fetch(msg_id, "(RFC822)")
         
         if data[0] is None:
