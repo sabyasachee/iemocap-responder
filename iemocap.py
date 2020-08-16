@@ -49,6 +49,7 @@ def respond_requests(iemocap_password):
 Full database: http://sail.usc.edu/databases/iemocap/ (md5 hash: 521be1e5eec425ae21fdc27c763ca813)
 Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb72dd45a9af6b801ee999cb5a)"""
     error_response = "Please fill the request form again here - https://sail.usc.edu/iemocap/release_form.php"
+    industry_response = "We are sorry to inform you that the dataset is not available for commercial purposes. Thank you for your understanding."
 
     M = imaplib.IMAP4_SSL("imap.gmail.com")
     print("logging in...")
@@ -56,12 +57,12 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
     
     M.select("INBOX")
     print("searching iemocap emails in INBOX...")
-    _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Apr-2020')
+    _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 13-Aug-2020')
     inbox_msg_ids = data[0].split()
     
     M.select("[Gmail]/Spam")
     print("searching iemocap emails in SPAM...")
-    _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 02-Jun-2020')
+    _, data = M.search(None, 'SUBJECT "IEMOCAP Release Form" SINCE 13-Aug-2020')
     spam_msg_ids = data[0].split()
 
     iemocap_df = pd.read_csv("files/iemocap_2020.csv", index_col=None)
@@ -76,6 +77,8 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
     new_inbox_msg_ids = [x for x in inbox_msg_ids if x not in prev_msg_ids]
     new_spam_msg_ids = [x for x in spam_msg_ids if x not in prev_msg_ids]
     new_msg_ids = [("INBOX", x) for x in new_inbox_msg_ids] + [("[Gmail]/Spam", x) for x in new_spam_msg_ids]
+
+    old_email_addresses = iemocap_df["email"].tolist() + industry_df["email"].tolist()
 
     if len(new_msg_ids) == 0:
         print("No new requests...")
@@ -109,45 +112,51 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
 
             try:
                 parsed_output = parse_body(body)
-                parsed_output["msg_id"] = msg_id
-                parsed_date = datetime.datetime.fromtimestamp(email.utils.mktime_tz(email.utils.parsedate_tz(date)))
-                now = datetime.datetime.now()
-                parsed_output["request_date"] = datetime.datetime.strftime(parsed_date, "%d %b %Y")
-                parsed_output["response_date"] = datetime.datetime.strftime(now, "%d %b %Y")
-                for key, value in parsed_output.items():
-                    print(f"{key:15s} = {value}")
-                print()
                 
-                print("1. Approve")
-                print("2. Correct")
-                print("3. Industry")
-                print("4. Stash")
-                print("5. Next")
-                print("6. Quit\n")
-                action = input("Enter action number?\t")
-                
-                response = email.message.Message()
-                response["Message-ID"] = email.utils.make_msgid()
-                response["In-Reply-To"] = message["Message-ID"]
-                response["References"] = message["Message-ID"]
-                response["To"] = message["From"]
-                response["From"] = account
-                response["Subject"] = message["Subject"]
-                if action == "1":
-                    response.set_payload(iemocap_response)
-                    responses.append(response)
-                    approved_records.append(parsed_output)
-                elif action == "2":
-                    error_msg_ids.append(msg_id)
-                    error_message = input("What is wrong with the request?\t")
-                    response.set_payload(error_message + "\n" + error_response)
-                    responses.append(response)
-                elif action == "3":
-                    industry_records.append(parsed_output)
-                elif action == "4":
-                    error_msg_ids.append(msg_id)
-                elif action == "6":
-                    return
+                if parsed_output["address"] not in old_email_addresses:
+                    parsed_output["msg_id"] = msg_id
+                    parsed_date = datetime.datetime.fromtimestamp(email.utils.mktime_tz(email.utils.parsedate_tz(date)))
+                    now = datetime.datetime.now()
+                    parsed_output["request_date"] = datetime.datetime.strftime(parsed_date, "%d %b %Y")
+                    parsed_output["response_date"] = datetime.datetime.strftime(now, "%d %b %Y")
+                    for key, value in parsed_output.items():
+                        print(f"{key:15s} = {value}")
+                    print()
+                    
+                    print("1. Approve")
+                    print("2. Correct")
+                    print("3. Industry")
+                    print("4. Stash")
+                    print("5. Next")
+                    print("6. Quit\n")
+                    action = input("Enter action number?\t")
+                    
+                    response = email.message.Message()
+                    response["Message-ID"] = email.utils.make_msgid()
+                    response["In-Reply-To"] = message["Message-ID"]
+                    response["References"] = message["Message-ID"]
+                    response["To"] = message["From"]
+                    response["From"] = account
+                    response["Subject"] = message["Subject"]
+                    if action == "1":
+                        response.set_payload(iemocap_response)
+                        responses.append(response)
+                        approved_records.append(parsed_output)
+                    elif action == "2":
+                        error_msg_ids.append(msg_id)
+                        error_message = input("What is wrong with the request?\t")
+                        response.set_payload(error_message + "\n" + error_response)
+                        responses.append(response)
+                    elif action == "3":
+                        response.set_payload(industry_response)
+                        responses.append(response)
+                        industry_records.append(parsed_output)
+                    elif action == "4":
+                        error_msg_ids.append(msg_id)
+                    elif action == "6":
+                        return
+                else:
+                    print('Already replied to email address')
 
             except Exception as e:
                 print("Error occurred" + str(e))
@@ -156,6 +165,10 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
             print(f"{i + 1}/{len(new_msg_ids)}. MESSAGE ID = {msg_id}, multipart message ignored")
             error_msg_ids.append(msg_id)
         print("================================================================================================\n")
+
+    with open("files/error_message_ids.txt", "ab") as fw:
+        for msg_id in error_msg_ids:
+            fw.write(msg_id + b"\n")
 
     if len(responses) > 0:
         action = input("Do you want to send emails? (y/n)\t")
@@ -171,9 +184,6 @@ Without Videos: http://sail.usc.edu/databases/iemocap/small/ (md5 hash: 6f2e6ecb
 
     approved_df = pd.DataFrame.from_dict(approved_records)
     new_industry_df = pd.DataFrame.from_dict(industry_records)
-    with open("files/error_message_ids.txt", "ab") as fw:
-        for msg_id in error_msg_ids:
-            fw.write(msg_id + b"\n")
 
     if approved_df.shape[0]:
         print("Approved Records =>")

@@ -33,7 +33,7 @@ def parse_body(text):
     i = 6
     affiliation_lines = []
     while i < len(lines):
-        if lines[i] == "Department / Group":
+        if lines[i].startswith("Department / Group"):
             i += 1
             break
         affiliation_lines.append(lines[i])
@@ -42,7 +42,7 @@ def parse_body(text):
     
     department_lines = []
     while i < len(lines):
-        if lines[i] == "Title":
+        if lines[i].startswith("Title"):
             i += 1
             break
         department_lines.append(lines[i])
